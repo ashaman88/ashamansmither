@@ -1,0 +1,726 @@
+Program AshamanSmither;
+  {$IFDEF RAYMONDPOWNS}{wrappers} function FloodFillTPAWrap(const TPA: TPointArray): T2DPointArray; var tempATPA: T2DPointArray; begin tempATPA:= FloodFillTPA(TPA); Result:= tempATPA; SetLength(tempATPA, 0); end; function FindTPAEdges(const p: TPointArray): TPointArray; begin FindTPAEdgesWrap(p, result); end; Function RotatePoints(Const P: TPointArray; A, cx, cy: Extended): TPointArray; begin RotatePointsWrap(P, A, cx, cy, result); end; function TPAFromCircle(const CX, CY, Radius: Integer): TPointArray; begin TPAFromCircleWrap(CX, CY, Radius, result); end; function TPAFromEllipse(const CX, CY, XRadius, YRadius : Integer): TPointArray; begin TPAFromEllipseWrap(CX, CY, XRadius, YRadius, result); end; function TPAFromBox(const Box : TBox) : TPointArray; begin TPAFromBoxWrap(Box, result); end; Function ReturnPointsNotInTPA(Const TotalTPA: TPointArray; const Box: TBox): TPointArray; begin ReturnPointsNotInTPAWrap(TotalTPA, Box, result); end; function CombineIntArray(const Ar1, Ar2: TIntegerArray): TIntegerArray; begin CombineIntArrayWrap(Ar1, Ar2, result); end; function ReArrangeandShortenArray(const a: TPointArray; Dist: Integer): TPointArray; begin ReArrangeandShortenArrayWrap(a, Dist, result); end; function ReArrangeandShortenArrayEx(const a: TPointArray; w, h: Integer): TPointArray; begin ReArrangeandShortenArrayExWrap(a, w, h, result); end; function CombineTPA(const Ar1, Ar2: TPointArray): TPointArray; begin CombineTPAWrap(Ar1, Ar2, Result); end; function RemoveDistTPointArray(x, y, dist: Integer;const ThePoints: TPointArray; RemoveHigher: Boolean): TPointArray; begin RemoveDistTPointArrayWrap(x, y, dist, ThePoints, RemoveHigher, Result); end; function TPAFromText(const text, font: String; var w,h: Integer): TPointArray; begin TPAFromTextWrap(text, font, w, h, result); end; function GetColors(const Coords: TPointArray): TIntegerArray; begin GetColorsWrap(Coords, Result); end; function Explode(del, str: string): TStringArray; begin ExplodeWrap(del, str, Result); end; function MergeATPA(const ATPA : T2DPointArray): TPointArray; begin MergeATPAWrap(ATPA, Result); end; function SplitTPA(arr : TPointArray; dist : Integer) : T2DPointArray; begin SplitTPAWrap(arr, dist, result); end; function SplitTPAEx(arr : TPointArray; w, h : integer) : T2DPointArray; begin SplitTPAExWrap(Arr, w, h, result); end; function ClearTPAFromTPA(arP, ClearPoints : TPointArray) : TPointArray; begin ClearTPAFromTPAWrap(arP, ClearPoints, result); end; function TPAToATPAEx(arP : TPointArray; w, h : integer) : T2DPointArray; begin TPAtoATPAExWrap(arP, w, h, result); end; function TPAToATPA(arP : TPointArray; dist : Integer) : T2DPointArray; begin TPAtoATPAWrap(arP, dist, result); end; function FindGapsTPA(TPA : TPointArray; MinPixels : integer) : T2DPointArray; begin FindGapsTPAWrap(tpa, MinPixels, result); end; {$ENDIF}
+  {$DEFINE SMART}
+  {$I SRL-6/SRL.Simba}
+  {$I SPS/lib/SPS-RS3.Simba}
+Var
+  SCHammer: Boolean;
+
+{
+AshamanSmither v3.0
+-Make sure zoom is farthest out
+-FILL OUT THE STUFF BELOW
+-READ THE OP DIRECTIONS
+}
+
+
+///////////////////////////////////////////////////////////////////////
+//                                                                   //
+//                  Begin of user setup                              //
+//                Fill in the fields below                           //
+//                                                                   //
+///////////////////////////////////////////////////////////////////////
+
+Const
+{Method Settings}
+  ItemSlot          = 37;     // ***Which slot in the productionscreen is your item (1-50)***
+
+{General Settings}
+  LogMod            = False;  // ***Do you want the script to logout for a few mins when it detects a pmod or jmod talking to you? Note if true it may mess up script***
+
+{Break Settings}
+  TakeBreaks        = False;  // ***To Break or not to break***
+  SwitchWorlds      = True;   // ***Switch worlds after a break?***
+  BreakIn           = 600;    // ***How long before we take a break? (minutes)***
+  BreakFor          = 15;     // ***How long will we break for? (minutes)***
+  Bir               = 13;     // ***Random minutes to add/subtract from how long until we break***
+  Bfr               = 7;      // ***Random minutes to add/subjtract from break duraction***
+
+Procedure DeclarePlayers;
+Begin
+  Players.Setup(['Player1'], 'PlayerList'); //***Fill this out, Player1 = Name of the account in player manager, PlayerList = name of the player file***
+  SetLength(Players,1);
+
+  //***If NOT using the player manager, fill out the loginname and password below, otherwise ignore those two***
+  With players[0] Do
+  Begin
+  // loginName := '';      {Remove the "//" from this line if you arent using player manager}
+  // password := '';       {Remove the "//" from this line if you arent using player manager}
+    IsActive := True;
+    SCHammer := False;     // *** Are you using SC Hammers?***
+    World := 0;            //Enter desired world!
+  End;
+  CurrentPlayer := 0;
+End;
+
+///////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                       //
+//                            End of user setup                                          //
+//           Don't touch below this line unless you know what you're doing!!             //
+//                                                                                       //
+///////////////////////////////////////////////////////////////////////////////////////////
+
+Var
+  SmithCount,XP,StartTime,StartingExperience,Empty,NewPouch,NumbBars: Integer;
+  SmithX1,SmithY1,SmithX2,SmithY2,BankTime,SummoningTimer,MaxTime,SmithPH,XPH: Integer;
+  BarDTM,M,SCDTM: Integer;
+  W,X,Y,Z,RealBTime,BreakRounds,TotalBreaks: Integer;
+  CurrentBTime: TTimeMarker;
+  BarType, ItemType: String;
+
+
+Const
+  ScriptVersion = '3.0';
+  Debug = False;
+
+  Bronze = 'mbQAAAHicY2VgYOADYm4g5gRiUQYIYAViLiibBSrnb63MoCjJx2CtKwXGIDYXVB0yZsSCwQAAqKwC0Q==';
+  Iron = 'mggAAAHicY2NgYChjguBaIK4E4jwgzgfiIkYGhmwgLgDiMijOB+LggAAGBzs7MA4LCoKzuYBmYcOMODAEAACQ0wqf';
+  Steel = 'mggAAAHicY2NgYMhlguAKIE4F4kIgzgRiMUYGBgEgFgFiSSCWBmJZIG6urWVITUxkaG9sZLA0NwfTqsrKDPxAs7BhRhwYAgBHGwpd';
+  Mithril = 'mggAAAHicY2NgYOAAYn4GCOCCskE0KxBzAjE3VA0zVI2xiS+Ds0sqg4ysNoOTUzIYg8S4oPrQMSMODAEAY1QFLQ==';
+  Adamant = 'mggAAAHicY2NgYPBiYmDwBuIgIA4FYh8gdgHiAkYGhmwgzgXiYiAuhWILBwsw9gj2YPAK8wLTShpKDFxAs5AxPxQz4sAQAAAIvwlS';
+  Rune = 'mbQAAAHicY2VgYOBhgABOIBaG0mxAzA3E/EDMApX3j09nEJeWA2NbT38w5gKKo2NGLBgMAOQEA/E=';
+  BarString = [Bronze,Iron,Steel,Mithril,Adamant,Rune];
+  BarName = ['Bronze','Iron','Steel','Mithril','Adamant','Rune'];
+
+{*******************************************************************************
+Function AutoupdateMe;
+By: Shuttleu
+Edited By: Ashaman88
+Description: Autoupdates Script.
+*******************************************************************************}
+Procedure AutoUpdateMe;
+Var
+  Neifile: Integer;
+  OnlineVersion, NewScript, NeiFeilNennen: String;
+Begin
+  Writeln('Checking for script updates...');
+  OnlineVersion := GetPage('http://ashamansmither.googlecode.com/git/Version.txt');
+  Writeln('Online Version: '+ToStr(OnlineVersion));
+  Writeln('Local Version: '+ToStr(ScriptVersion));
+  If (trim(OnlineVersion) > ScriptVersion) Then
+  Begin
+    WriteLn('Newer script version online!');
+    WriteLn('Autoupdating to newer version.');
+    NewScript := GetPage('http://ashamansmither.googlecode.com/git/AshamanSmither.simba');
+    NeiFeilNennen := ScriptPath+ 'AshamanSmither V'+OnlineVersion+'.simba';
+    Neifile := Rewritefile(NeiFeilNennen, true);
+    Try
+      WriteFileString(Neifile, NewScript);
+    Except
+      Begin
+        WriteLn('Fatal error writing to '+NeiFeilNennen+'!!');
+        Terminatescript;
+      End;
+    End;
+    CloseFile(Neifile);
+    WriteLn('New script downloaded to '+NeiFeilNennen+'!! Please use this one!!');
+    TerminateScript;
+  End Else
+    WriteLn('You have the latest version of the script!');
+End;
+
+function TRSChatBox.getXP: Integer;
+var
+  b: TBox;
+  s: String;
+  tpa : TPointArray;
+  atpa : T2DPointArray;
+  i,cts,p: Integer;
+begin
+  b := self.getBounds();
+  b.edit(+(b.x2-b.x1)-140, +10, -5, -94);
+
+  findColorsTolerance(tpa, 14013909, b, 4,colorSetting(2, 0.00, 0.00));
+
+  if length(tpa) < 2 then
+  begin
+    print('chatBox.getXP(): No XP found', TDebug.SUB);
+    Exit;
+  end;
+
+  atpa := tpa.cluster(5);
+
+  b:= atpa.getbounds;
+  b.edit(-2,-2,+2,+3);
+
+  s:=Replace(tesseractgettext(b.x1,b.y1,b.x2,b.y2, FILTER_SMALL_CHARS), ' ', '', [rfReplaceAll]);
+
+  P := Pos('x', S);
+  if P > 0 then
+    Result := StrToIntDef(ExtractFromStr(Copy(s, P, Length(S)), Numbers), 0)
+  else
+    Result := StrToIntDef(ExtractFromStr(S, Numbers), 0);
+
+  print('chatBox.getXP(): XP found: ' + tostr(result), TDebug.SUB);
+end;
+
+Procedure SetDTM;
+Begin
+  W := (BreakIn * 60000);
+  X := (BreakFor * 60000);
+  Y := RandomRange(-BIR * 60000, BIR * 60000);
+  Z := RandomRange(-BFR * 60000, BFR * 60000);
+
+  SCDTM := DTMFromString('mggAAAHicY2NgYLBnYmBwBWJvJgjbHIidgFickYGBH4iFgJgHiBWBWBCIk5LjGZJ9nRjSA13BuKg4j6E81p+BH2gWNsyIA0MAAKpKCPw=');
+End;
+
+Procedure Fr33DTM;
+Begin
+  FreeDTM(BarDTM);
+  FreeDTM(SCDTM);
+End;
+
+Function CheckStuff: Boolean;
+Begin
+  Result:=False;
+
+  If Not IsLoggedIn Then
+  Begin
+    If Not Players[CurrentPlayer].Login Then
+      TerminateScript;
+    Mainscreen.SetAngle(MS_ANGLE_HIGH);
+    Minimap.SetAngle(MM_DIRECTION_WEST);
+    Result:=True;
+  End;
+
+  If ClaimSpinTicket Or ExitSquealOfFortune Then
+  Begin
+    If Not IsLoggedIn Then
+      TerminateScript;
+    Mainscreen.SetAngle(MS_ANGLE_HIGH);
+    Minimap.SetAngle(MM_DIRECTION_WEST);
+    Result:=True;
+  End;
+End;
+
+Procedure AntiBan2;
+Var
+  I,X,Y,W,H: Integer;
+  B: TBox;
+Begin
+  Wait(RandomRange(0,100));
+  B:=[553,85,732,180];
+  GetMousePos(X,Y);
+  GetClientDimensions(W, H);
+  If PointInBox(Point(X,Y),B) Or (X < 0) or (X > W) or (Y < 0) or (Y > H) Then
+    Exit;
+
+  I := Random(1000);
+  Case I Of
+    1..500: Mouse(B.getRandomPoint);
+    501..600: MouseOffClient(Random(4));
+  End;
+End;
+
+Procedure Antiban;
+Var
+  I: Integer;
+Begin
+  I := Random(600);
+  Case I Of
+    2..7:
+      Begin
+        hoverSkill(Skill_Fletching);
+        Wait(GaussRangeInt(600,2000));
+      End;
+    8..50: mouseMovingObject;
+    51..100: SleepAndMoveMouse(GaussRangeInt(100,1500));
+    101..400:
+      Begin
+        MouseOffClient(Random(4));
+        Wait(GaussRangeInt(0, 2000));
+      End;
+    501..600: Wait(GaussRangeInt(0, 2000));
+
+  End;
+  Wait(GaussRangeInt(0, 2000));
+End;
+
+Function BreakHandler(BreakIn, BreakFor, randBreakIn, randBreakFor: Integer): Boolean;
+Var
+  H,M,S: Integer;
+Begin
+  If Not IsLoggedIn Then
+    Exit;
+
+  If Not TakeBreaks Then
+    Exit;
+
+  If (GetTimeRunning < ((W) + (Y) + BreakRounds)) Then
+    Exit Else
+    If (GetTimeRunning > ((W) + (Y) + BreakRounds)) Then
+    Begin
+      RealBTime := Round((X+Z)/60000);
+      Writeln('Taking a break for about ' + IntToStr(RealBTime) + ' minutes.');
+      Players[CurrentPlayer].Logout;
+      CurrentBTime.Reset;
+      CurrentBTime.Start;
+      Repeat
+        Wait(21000);
+        ConvertTime((X+Z)-CurrentBTime.GetTime,H,M,S);
+        Writeln('Breaktime left: '+IntToStr(H)+':'+IntToStr(M)+':'+IntToStr(S));
+      Until(CurrentBTime.GetTime>(X+Z));
+      Writeln('Logging in.');
+      Players[CurrentPlayer].Login;
+      Wait(4000);
+      Result := IsLoggedIn;
+      Mainscreen.SetAngle(MS_ANGLE_HIGH);
+        Minimap.SetAngle(MM_DIRECTION_WEST);
+      IncEx(BreakRounds, (W) + (X));
+      Inc(TotalBreaks);
+      Writeln('The next break will occur in about ' + IntToStr(BreakIn) + ' minutes.');
+      W := (BreakIn * 60000);
+      X := (BreakFor * 60000);
+      Y := RandomRange(-BIR * 60000, BIR * 60000);
+      Z := RandomRange(-BFR * 60000, BFR * 60000);
+    End;
+End;
+
+Function InBank: Boolean;
+Var
+  MP: TPoint;
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
+Begin
+  If Debug Then
+    Writeln('ENTERING INBANK');
+
+  If Not IsLoggedIn Then
+    Exit;
+
+  CheckStuff;
+
+  MP:=SPS.GetPlayerPos;
+
+  If PointInBox(MP,[180,200,130,178]) Then
+  Begin
+    If Debug Then
+      Writeln('You are inside bank');
+    Result:=True;
+  End Else
+    If Debug Then
+      Writeln('You are not inside bank');
+End;
+
+Function OpenSmith: Boolean;
+Var
+  X,Y,H,I: Integer;
+  T: TTimeMarker;
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
+  B: TBox;
+Begin
+  If Debug Then
+    Writeln('ENTERING OPENSMITH');
+
+  If Not IsLoggedIn Then
+    Exit;
+
+  CheckStuff;
+
+  If ProductionScreen.IsOpen Then
+  Begin
+    Result:=True;
+    Exit;
+  End;
+
+  B:=Mainscreen.GetBounds;
+  B.Edit(+271,0,0,0);
+
+  findColorsTolerance(tpa, 4803409, B, 6,colorSetting(2, 0.70, 0.14)); //silver
+
+  ATPA := TPA.Cluster(10,15);
+  atpa.filterBetween(0, 100);
+  ATPA.sortFromFirstPoint(Mainscreen.Playerpoint);
+
+
+  SmartImage.DebugATPA(ATPA);
+
+  If (Length(ATPA) = 0) Then
+  Begin
+    If Debug Then
+      Writeln('No anvil colors found');
+    Exit;
+  End;
+
+  H := High(ATPA);
+
+  For I := 0 To H Do
+  Begin
+    MiddleTPAEx(ATPA[I], X, Y);
+
+    If Debug Then
+      Writeln('Anvil Length: '+ToStr(Length(ATPA[I])));
+
+    Mouse(X,Y,GaussRangeInt(-5,5),GaussRangeInt(-5,5));
+
+    If (IsMouseOverText(['Smith','Anvil','nvil','mith'],RandomRange(200,220))) Then
+    Begin
+      If Debug Then
+        Writeln('Found Anvil, Clicking');
+
+      if (random(8) = 1) then
+      begin
+        fastClick(MOUSE_RIGHT);
+
+        if (not chooseOption.select(['Smith','Anvil','mith'])) then
+          continue;
+      end else
+        fastClick(MOUSE_LEFT);
+
+      If Debug Then
+        Writeln('Waiting for ProductionScreen.IsOpen');
+
+      SmartImage.Clear;
+      MouseBox([293,332,505,348]);
+
+      T.Start;
+      Repeat
+        Wait(Random(100));
+        If T.GetTime>7000 Then
+          Exit;
+        If CheckStuff Then
+          Exit;
+      Until ProductionScreen.IsOpen;
+
+      Exit(True);
+    End;
+  End;
+End;
+
+Function Smith: Boolean;
+Var
+  X,Y,Exp: Integer;
+  T: TTimeMarker;
+  GetBars: Boolean;
+Begin
+  If Debug Then
+    Writeln('ENTERING SMITH');
+
+  If Not IsLoggedIn Then
+    Exit;
+
+  CheckStuff;
+
+  If (TabBackpack.CountDTM(BarDTM) < NumbBars) Then
+    Exit;
+
+  If ProductionScreen.IsOpen Then
+  Begin
+    If Debug Then
+      Writeln('Smith menu is up');
+
+    If Not ProductionScreen.SelectBox(ItemSlot) Then
+      Exit;
+
+    If ItemType = '' Then
+      ItemType:=ProductionScreen.GetSelectedBoxText;
+
+    If Not ProductionScreen.ClickStart Then
+      Exit;
+
+    SRL_Events[EVENT_ANTIBAN] := nil;
+    If Not TabBackpack.waitSlotPixelChange(GaussRangeInt(1,3),GaussRangeInt(10000, 20000)) Then
+    Begin
+      SRL_Events[EVENT_ANTIBAN] := @Antiban;
+      Exit;
+    End;
+
+    SRL_Events[EVENT_ANTIBAN] := @Antiban;
+    If Debug Then
+      Writeln('Started smithing successfully, waiting to be done');
+
+
+    SmithCount:= SmithCount + ProgressScreen.getTotalToMake;
+
+    If NumbBars = 0 Then
+      NumbBars:= (28-SmithCount);
+
+    T.Start;
+    Repeat
+      Wait(Random(100));
+      If ProgressScreen.IsOpen Then
+      Begin
+        If Debug Then
+          Writeln('progress is open');
+        T.Reset;
+        T.Start;
+      End;
+      If CheckStuff Then
+        Break;
+      If T.GetTime>3500 Then
+      Begin
+        Writeln('Took too long for xp to change');
+        Exit;
+      End;
+      AntiBan;
+    Until (Not FindDTM(BarDTM,X,Y,TabBackpack.GetBounds)) Or (Not ProgressScreen.IsOpen) Or (ProgressScreen.FindButton(PROGRESS_BUTTON_DONE));
+    Result:=True;
+  End;
+End;
+
+Procedure WhichBar;
+Var
+  X,Y,I,TempDTM: Integer;
+  ItemBox: TBox;
+Begin
+  ItemBox:=BankScreen.getBankSlotBox(10);
+  For I:=0 To 5 Do
+  Begin
+    TempDTM:= DTMFromString(BarString[I]);
+    If FindDTM(TempDTM,X,Y,ItemBox) Then
+    Begin
+      BarDTM:= DTMFromString(BarString[I]);
+      FreeDTM(TempDTM);
+      BarType:= BarName[I];
+      Exit;
+    End;
+    FreeDTM(TempDTM);
+    Wait(Random(100));
+  End;
+End;
+
+Procedure DepositTools;
+Var
+  X,Y,I: Integer;
+  ItemBox: TBox;
+Begin
+  For I:=1 To 28 Do
+  Begin
+    ItemBox:=BankScreen.getPackSlotBox(I);
+    If FindDTM(SCDTM,X,Y,ItemBox) Or FindDTM(BarDTM,X,Y,ItemBox) Then
+      Continue;
+
+    BankScreen.Deposit([I]);
+  End;
+End;
+
+Procedure WithdrawItems;
+Var
+  X,Y: Integer;
+  B: TBox;
+  T: TTimeMarker;
+Begin
+  If BankScreen.IsOpen Then
+  Begin
+    If BarDTM = 0 Then
+      WhichBar;
+
+    If (Not (Bankscreen.getPackCount=0)) Then
+    Begin
+      If Debug Then
+        Writeln('Depositing Stuff');
+      DepositTools;
+      If (Bankscreen.getPackCountDTM(BarDTM)<>Bankscreen.getPackCount) Then
+        If SCHammer Then
+          Bankscreen.Deposit([2..28]) Else
+          If Not Bankscreen.isPackEmpty Then
+            BankScreen.QuickDeposit(QUICK_DEPOSIT_INVENTORY);
+    End;
+
+    If Bankscreen.isPackFull Then
+      Exit;
+
+    B:= Bankscreen.GetBounds;
+    B.Edit(+10,+10,0,0);
+
+    If (SCHammer) And (Bankscreen.getPackCountDTM(SCDTM)=0) Then
+      Bankscreen.Withdraw(SCDTM,1);
+
+    T.Start;
+    Repeat
+      Wait(Random(100));
+      If BankScreen.Withdraw(10, WITHDRAW_AMOUNT_ALL, ['']) Then
+        Break;
+      If T.GetTime>10000 Then
+      Begin
+        If Not IsLoggedIn Then
+          Exit;
+        Writeln('Out of bars');
+        Writeln('Screenshot saved, send to Ashaman if you"re not really out of bars!');
+        SaveScreenshot(ScriptPath + '/fail_.bmp');
+        TerminateScript;
+      End;
+    Until T.GetTime>20000;
+  End;
+End;
+
+Procedure Banking;
+Var
+  T: TTimeMarker;
+Label
+  Jump;
+Begin
+  If Debug Then
+    Writeln('ENTERING BANKING PROCEDURE');
+
+  If DTMExists(BarDTM) Then
+    If TabBackpack.CountDTM(BarDTM)=28 Then
+      Exit;
+
+  T.startTime;
+  Repeat
+    If Bankscreen.IsOpen Or Pinscreen.IsOpen Then
+      Break;
+    SRL_Events[EVENT_ANTIBAN] := @AntiBan2;
+    If Not Bankscreen.Open(BANK_NPC_BLUE)Then
+    Begin
+      SRL_Events[EVENT_ANTIBAN] := nil;
+      SPS.WalkToPos(Point(194,168));
+      Mainscreen.SetAngle(MS_ANGLE_HIGH);
+      Minimap.SetAngle(MM_DIRECTION_WEST);
+    End Else
+      Break;
+
+    Wait(Random(100));
+
+    If CheckStuff Then
+      Exit;
+
+    If T.GetTime>120000 Then
+    Begin
+      Writeln('FailedOpeningBanker');
+      TerminateScript;
+    End;
+  Until(PinScreen.IsOpen or BankScreen.IsOpen);
+  SRL_Events[EVENT_ANTIBAN] := @Antiban;
+
+  Wait(Random(100));
+
+  If Debug Then
+    Writeln('Opened bank successfull');
+
+  PinScreen.Enter(Players[CurrentPlayer].BankPin);
+
+  Wait(Random(100));
+  WithdrawItems;
+
+  BankScreen.Close;
+
+  Wait(Random(100));
+
+  T.Reset;
+  T.Start;
+  Repeat
+    Wait(Random(200));
+    If (T.GetTime>5000) Then
+      Exit;
+    If T.GetTime>9000 Then
+    Begin
+      If Not IsLoggedIn Then
+        Exit;
+      Writeln('It looks like you"re out of supplies, shutting down!');
+      Writeln('Screenshot saved, send to Ashaman if you"re not really out of bars!');
+      SaveScreenshot(ScriptPath + '/fail_.bmp');
+      Writeln('Inventory Count is: '+ToStr(TabBackpack.Count)+' Tell Ashaman this!!!');
+      TerminateScript;
+    End;
+  Until (TabBackpack.IsItemInSlot(28));
+End;
+
+Procedure ProgressReport;
+Var
+  TTB: Integer;
+Begin
+  If Not Debug Then
+    ClearDebug;
+
+  TTB := (((W) + (Y) + BreakRounds)-GetTimeRunning);
+
+  XP := (ChatBox.GetXP - StartingExperience);
+  XPH := Round(XP * (3600.0 / (GetTimeRunning / 1000.0)));
+  SmithPH := Round((SmithCount * (3600.0 / (GetTimeRunning / 1000.0))));
+
+  If XPH < 1000 Then
+    XPH:=1000;
+
+  writeln('|=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=|');
+  writeln('|                   AshamanSmither v'+PadR(toStr(ScriptVersion), 24), '|');
+  writeln('|=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=|');
+  writeln(PadR('| Running For: '+TimeRunning, 60)+'|');
+  writeln(PadR('| '+ItemType+'''s Made: ' + GroupDigits(SmithCount,','), 35) + padR('Made/H: ' + GroupDigits(SmithPH,','), 25) + '|');
+  writeln(PadR('| Exp Earned: ' + GroupDigits(XP,','), 35) + padR('Exp/Hour: ' + GroupDigits(XPH,','), 25) + '|');
+  writeln('|___________________________________________________________|');
+  writeln('|___________________________________________________________|');
+
+  If TakeBreaks Then
+    Writeln('Time until break: '+MsToTime(TTB, Time_Bare));
+End;
+
+Procedure Setup;
+Begin
+  SmartEnableDrawing := True;
+  ClearDebug;
+  AutoUpdateMe;
+  SetupSRL;
+
+  SPSAnyAngle:=True;
+
+  DeclarePlayers;
+  If Not IsLoggedIn Then
+  Begin
+    If Not Players[CurrentPlayer].Login Then
+      TerminateScript;
+    Wait(RandomRange(1000,2000));
+  End;
+
+  If Not Debug Then
+    DisableSRLDebug:=True;
+
+  If conversationBox.continue(true, true) Then
+    Wait(RandomRange(1000,2000));
+
+  AddOnTerminate('FR33DTM');
+  SetDTM;
+
+  SPS.Setup('0_0VWB', 'Runescape_Surface\');
+
+  StartTime:=GetSystemTime;
+  minimap.toggleRun(true);
+
+  StartingExperience := ChatBox.GetXP;
+  Mainscreen.SetAngle(MS_ANGLE_HIGH);
+  Minimap.SetAngle(MM_DIRECTION_WEST);
+  If Not LogMod Then
+    Players[CurrentPlayer].FindMod := False;
+
+  Writeln('Goodluck!');
+End;
+
+Procedure MainLoop;
+Var
+  I: Integer;
+Begin
+  BreakHandler(BreakIn,BreakFor,Bir,Bfr);
+
+  Banking;
+
+  For I:=0 To 2 Do
+    If (Not OpenSmith) And (I=2) Then
+    Begin
+      SRL_Events[EVENT_ANTIBAN] := nil;
+      SPS.WalkToPos(Point(190,203));
+      SRL_Events[EVENT_ANTIBAN] := @Antiban;
+      WaitFunc(@OpenSmith,1,6000);
+    End;
+
+  Smith;
+
+  ProgressReport;
+  Wait(Random(100));
+End;
+
+Begin
+  Setup;
+  Repeat
+    MainLoop;
+    If Not IsLoggedIn Then
+    Begin
+      If Not Players[CurrentPlayer].Login Then
+        TerminateScript;
+      Mainscreen.SetAngle(MS_ANGLE_HIGH);
+      Minimap.SetAngle(MM_DIRECTION_WEST);
+    End;
+  Until(Players.GetActive() = 0);
+  Writeln('All players inactive,bye!');
+End.

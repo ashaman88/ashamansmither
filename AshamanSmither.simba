@@ -85,12 +85,11 @@ Var
   W,X,Y,Z,RealBTime,BreakRounds,TotalBreaks: Integer;
   CurrentBTime: TTimeMarker;
   BarType, ItemType: String;
-  SCHammer: Boolean;
+  SCHammer,debug: Boolean;
 
 
 Const
-  ScriptVersion = '3.1';
-  Debug = False;
+  ScriptVersion = '3.2';
   Bir               = 13;     // ***Random minutes to add/subtract from how long until we break***
   Bfr               = 7;      // ***Random minutes to add/subjtract from break duraction***
 
@@ -161,10 +160,7 @@ begin
       booleans[1] := strToBool(playerForm.players[i].settings[4]);
       booleans[2] := strToBool(playerForm.players[i].settings[5]);
       booleans[3] := strToBool(playerForm.players[i].settings[6]);
-
-      // any other data types you've decided to use
-
-      strings[0] := playerForm.players[i].settings[7]; //graphics
+      debug := strToBool(playerForm.players[i].settings[7]);
     end;
 end;
 
@@ -179,13 +175,8 @@ begin
 
     editBoxLabels := ['ItemSlot', 'Minutes until Break', '# of Minutes to Break']; // edit boxes are created for each array element
     editBoxDefaults := [ '1', '600', '15'];                                             // optional default values for each edit box; array length must equal editBoxLabel length
-    checkBoxLabels := ['Sacred Clay Hammer', 'Take Breaks', 'Switch Worlds (After Break)', 'Logout if Mod is near'];        // same as editBoxLabels but for check boxes
-    checkBoxDefaults := ['False', 'True','True','True'];
-
-    comboBoxLabels := ['GraphicsMode'];                                                // same as editBoxLabels but for combo boxes (drop down boxes)
-    comboBoxDefaults := ['OpenGL'];
-    setLength(comboBoxItems, length(comboBoxLabels));
-    comboBoxItems[0] := ['OpenGL', 'DirectX'];
+    checkBoxLabels := ['Sacred Clay Hammer', 'Take Breaks', 'Switch Worlds (After Break)', 'Logout if Mod is near', 'Debug Mode'];        // same as editBoxLabels but for check boxes
+    checkBoxDefaults := ['False', 'True','True','True','False'];
   end;
 end;
 
@@ -260,6 +251,8 @@ Begin
   FreeDTM(SCDTM);
 End;
 
+
+
 Function CheckStuff: Boolean;
 Begin
   Result:=False;
@@ -273,14 +266,14 @@ Begin
     Result:=True;
   End;
 
-  If ClaimSpinTicket Or ExitSquealOfFortune Then
+  {If ClaimSpinTicket Or ExitSquealOfFortune Then
   Begin
     If Not IsLoggedIn Then
       TerminateScript;
     Mainscreen.SetAngle(MS_ANGLE_HIGH);
     Minimap.SetAngle(MM_DIRECTION_WEST);
     Result:=True;
-  End;
+  End; }
 End;
 
 Procedure AntiBan2;
@@ -419,7 +412,7 @@ Begin
   B:=Mainscreen.GetBounds;
   B.Edit(+271,0,0,0);
 
-  findColorsTolerance(tpa, 4407360, B, 2,colorSetting(2, 12.51, 0.68)); //silver
+  findColorsTolerance(tpa, 5198170, B, 2,colorSetting(2, 0.38, 0.33)); //silver
 
   ATPA := TPA.Cluster(10,15);
   atpa.filterBetween(0, 100);
@@ -535,7 +528,6 @@ Begin
       Begin
         If Debug Then
           Writeln('progress is open');
-        T.Reset;
         T.Start;
       End;
       If CheckStuff Then
@@ -547,6 +539,9 @@ Begin
       End;
       AntiBan;
     Until (Not FindDTM(BarDTM,X,Y,TabBackpack.GetBounds)) Or (Not ProgressScreen.IsOpen) Or (ProgressScreen.FindButton(PROGRESS_BUTTON_DONE));
+    If (Not FindDTM(BarDTM,X,Y,TabBackpack.GetBounds)) Then
+      if debug then
+        writeln('out of bars');
     Result:=True;
   End;
 End;
@@ -556,6 +551,7 @@ Var
   X,Y,I,TempDTM: Integer;
   ItemBox: TBox;
 Begin
+  print('searching for bar type');
   ItemBox:=BankScreen.getBankSlotBox(10);
   For I:=0 To 5 Do
   Begin
@@ -565,6 +561,7 @@ Begin
       BarDTM:= DTMFromString(BarString[I]);
       FreeDTM(TempDTM);
       BarType:= BarName[I];
+      print('auto detect bar: ' + barName[i]);
       Exit;
     End;
     FreeDTM(TempDTM);
@@ -755,10 +752,7 @@ Begin
   declarePlayers();
   debugSPFSettings(); // this can be removed if you're satisfied with the result
 
- // terminatescript;
-
- If Players[CurrentPlayer].strings[0] = 'DirectX' Then
-    smartPlugins := ['d3d9.dll','OpenGL32.dll'];
+ smartPlugins := ['d3d9.dll','OpenGL32.dll'];
 
   SetupSRL;
 
@@ -772,7 +766,8 @@ Begin
   End;
 
   If Not Debug Then
-    DisableSRLDebug:=True;
+    DisableSRLDebug:=True else
+    DisableSRLDebug:=false;
 
   If conversationBox.continue(true, true) Then
     Wait(RandomRange(1000,2000));

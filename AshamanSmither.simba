@@ -85,11 +85,11 @@ Var
   W,X,Y,Z,RealBTime,BreakRounds,TotalBreaks: Integer;
   CurrentBTime: TTimeMarker;
   BarType, ItemType: String;
-  SCHammer,debug: Boolean;
+  SCHammer,debug, normalBank: Boolean;
 
 
 Const
-  ScriptVersion = '3.2';
+  ScriptVersion = '3.3';
   Bir               = 13;     // ***Random minutes to add/subtract from how long until we break***
   Bfr               = 7;      // ***Random minutes to add/subjtract from break duraction***
 
@@ -141,7 +141,7 @@ End;
 
 procedure declarePlayers();
 var
-  i: integer;
+  i, j: integer;
 begin
   players.setup(playerForm.playerNames, playerForm.playerFile); // load the SPF players from the SRL Player Manager
   currentPlayer := 0;                                           // player to use first
@@ -161,6 +161,14 @@ begin
       booleans[2] := strToBool(playerForm.players[i].settings[5]);
       booleans[3] := strToBool(playerForm.players[i].settings[6]);
       debug := strToBool(playerForm.players[i].settings[7]);
+
+      if (playerForm.players[i].settings[8] = 'Normal') then
+        normalBank := true;
+
+      if not normalBank then
+        for j := 0 to high(playerForm.comboBoxItems[0]) do                            //quickload
+          if (playerForm.players[i].settings[8] = playerForm.comboBoxItems[0][j]) then
+            integers[3] := j+2;
     end;
 end;
 
@@ -177,6 +185,11 @@ begin
     editBoxDefaults := [ '1', '600', '15'];                                             // optional default values for each edit box; array length must equal editBoxLabel length
     checkBoxLabels := ['Sacred Clay Hammer', 'Take Breaks', 'Switch Worlds (After Break)', 'Logout if Mod is near', 'Debug Mode'];        // same as editBoxLabels but for check boxes
     checkBoxDefaults := ['False', 'True','True','True','False'];
+
+    comboBoxLabels := ['QuickLoad'];                                                // same as editBoxLabels but for combo boxes (drop down boxes)
+    comboBoxDefaults := ['Normal'];
+    setLength(comboBoxItems, length(comboBoxLabels));
+    comboBoxItems[0] := ['Normal', 'PRESET_1', 'PRESET_2'];
   end;
 end;
 
@@ -282,7 +295,9 @@ Var
   B: TBox;
 Begin
   Wait(RandomRange(0,100));
-  B:=[553,85,732,180];
+  if normalbank then
+    B:=[553,85,732,180] else
+    B:=[187, 566, 251, 582];
   GetMousePos(X,Y);
   GetClientDimensions(W, H);
   If PointInBox(Point(X,Y),B) Or (X < 0) or (X > W) or (Y < 0) or (Y > H) Then
@@ -412,7 +427,7 @@ Begin
   B:=Mainscreen.GetBounds;
   B.Edit(+271,0,0,0);
 
-  findColorsTolerance(tpa, 5198170, B, 2,colorSetting(2, 0.38, 0.33)); //silver
+  findColorsTolerance(tpa, 4803668, B, 4,colorSetting(2, 0.72, 0.62)); //silver
 
   ATPA := TPA.Cluster(10,15);
   atpa.filterBetween(0, 100);
@@ -457,7 +472,6 @@ Begin
         Writeln('Waiting for ProductionScreen.IsOpen');
 
       SmartImage.Clear;
-      MouseBox([293,332,505,348]);
 
       T.Start;
       Repeat
@@ -508,6 +522,7 @@ Begin
     If Not TabBackpack.waitSlotPixelChange(GaussRangeInt(1,3),GaussRangeInt(10000, 20000)) Then
     Begin
       SRL_Events[EVENT_ANTIBAN] := @Antiban;
+      print('Failed to detect inv change');
       Exit;
     End;
 
@@ -546,18 +561,18 @@ Begin
   End;
 End;
 
-Procedure WhichBar;
+Procedure WhichBar(box: tbox);
 Var
   X,Y,I,TempDTM: Integer;
   ItemBox: TBox;
 Begin
   print('searching for bar type');
-  ItemBox:=BankScreen.getBankSlotBox(10);
   For I:=0 To 5 Do
   Begin
     TempDTM:= DTMFromString(BarString[I]);
-    If FindDTM(TempDTM,X,Y,ItemBox) Then
+    If FindDTM(TempDTM,X,Y,Box) Then
     Begin
+      print('found bardtm');
       BarDTM:= DTMFromString(BarString[I]);
       FreeDTM(TempDTM);
       BarType:= BarName[I];
@@ -593,7 +608,7 @@ Begin
   If BankScreen.IsOpen Then
   Begin
     If BarDTM = 0 Then
-      WhichBar;
+      WhichBar(BankScreen.getBankSlotBox(10));
 
     If (Not (Bankscreen.getPackCount=0)) Then
     Begin
@@ -637,6 +652,7 @@ End;
 Procedure Banking;
 Var
   T: TTimeMarker;
+  time: integer;
 Label
   Jump;
 Begin
@@ -646,6 +662,8 @@ Begin
   If DTMExists(BarDTM) Then
     If TabBackpack.CountDTM(BarDTM)=28 Then
       Exit;
+
+  claimTicket;
 
   T.start;
   Repeat
@@ -682,9 +700,37 @@ Begin
   PinScreen.Enter(Players[CurrentPlayer].BankPin);
 
   Wait(Random(100));
-  WithdrawItems;
 
-  BankScreen.Close;
+  if not normalBank then
+  begin
+    t.start;
+    repeat
+      wait(random(100));
+
+      If bankScreen.clickButton(Players[CurrentPlayer].Integers[3]) Then
+        break;
+
+      If (T.GetTime>Time) Or (Not IsLoggedIn) Then
+        Exit;
+    until false;
+
+    t.start;
+    Time:=GaussRangeInt(4000, 8000);
+
+    Repeat
+      if not bankScreen.__find() then
+        Break;
+      If (T.GetTime>Time) Or (Not IsLoggedIn) Then
+        Exit;
+      Wait(GaussRangeInt(0, 200));
+    Until False;
+  end else
+  begin
+
+    WithdrawItems;
+
+    BankScreen.Close;
+  end;
 
   Wait(Random(100));
 
@@ -705,6 +751,9 @@ Begin
       TerminateScript;
     End;
   Until (TabBackpack.IsItemInSlot(28));
+
+  If BarDTM = 0 Then
+    WhichBar(tabbackpack.getSlotBox(2));
 End;
 
 Procedure ProgressReport;
